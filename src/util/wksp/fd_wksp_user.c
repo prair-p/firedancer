@@ -525,7 +525,7 @@ fd_wksp_reset( fd_wksp_t * wksp,
   void * wksp_data = (void*)((ulong)wksp + fd_wksp_private_pinfo_off());
   fd_asan_poison( wksp_data, footprint - fd_wksp_private_pinfo_off() );
   fd_wksp_private_pinfo_t * pinfo_arr = fd_wksp_private_pinfo( wksp );
-  for( ulong i=0; i<wksp->part_max; i++ ) { 
+  for( ulong i=0; i<wksp->part_max; i++ ) {
     fd_asan_unpoison( &pinfo_arr[ i ], FD_WKSP_PRIVATE_PINFO_FOOTPRINT );
   }
 # endif
@@ -575,6 +575,7 @@ fd_wksp_usage( fd_wksp_t *       wksp,
       fd_wksp_private_unlock( wksp );
       FD_LOG_WARNING(( "corrupt wksp detected" ));
       fd_memset( usage, 0, sizeof(fd_wksp_usage_t) );
+      return usage;
     }
     pinfo[ i ].cycle_tag = cycle_tag; /* mark i as visited */
 

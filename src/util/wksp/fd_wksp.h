@@ -142,14 +142,25 @@
 /* FD_WKSP_CHECKPT_STYLE_* specifies the streaming format to use for
    a workspace checkpoint.  These are non-zero.
 
-     RAW - the stream will have extensively workspace metadata followed
-           by the used workspace partitions.  No compression or
-           hashing is done of the workspace partitions.
+     V1 - the stream will have extensive workspace metadata followed by
+          the used workspace partitions.  No compression or hashing is
+          done of the workspace partitions.
 
-     DEFAULT - the style to use when not specified by user. */
+     V2 - similar to V1 in functionality but will be written such that
+          checkpt and restore are parallelizable.
 
-#define FD_WKSP_CHECKPT_STYLE_RAW     (1)
-#define FD_WKSP_CHECKPT_STYLE_DEFAULT FD_WKSP_CHECKPT_STYLE_RAW
+     V3 - This is actually V2 but compressed frames will be enabled.
+
+     DEFAULT - the style to use when not specified by user.  0 indicates
+     to use V3 if the target supports it and V2 if not. */
+
+#define FD_WKSP_CHECKPT_STYLE_V1      (1)
+#define FD_WKSP_CHECKPT_STYLE_V2      (2)
+#define FD_WKSP_CHECKPT_STYLE_V3      (3)
+
+#define FD_WKSP_CHECKPT_STYLE_DEFAULT (0)
+
+#define FD_WKSP_CHECKPT_STYLE_RAW     FD_WKSP_CHECKPT_STYLE_V1 /* backward compat */
 
 /* A fd_wksp_t * is an opaque handle of a workspace */
 
@@ -1015,13 +1026,49 @@ fd_wksp_restore( fd_wksp_t *  wksp,
                  char const * path,
                  uint         seed );
 
-/* fd_wksp_restore_preview extracts key parameters from a checkpoint
-   file. These can be used with fd_funk_new for a correct restore. */
+/* fd_wksp_preview previews the wksp checkpt at path.  On success,
+   returns FD_WKSP_SUCCESS (0), path seems to contain a supported wksp
+   checkpt and, if opt_preview was non-NULL, *opt_preview will contain,
+   at a minimum, the info needed to create a new wksp with the same
+   parameters as the wksp at path.  On failure, returns a FD_WKSP_ERR
+   (negative, silent) and *_opt_preview is unchanged.  Returns for
+   failure include INVAL (NULL path), FAIL (unable to read checkpt
+   header at path), CORRUPT (the leading bytes at path don't appear to
+   be a wksp checkpt). */
+
+struct fd_wksp_preview {
+  int   style;
+  uint  seed;
+  ulong part_max;
+  ulong data_max;
+  char  name[ FD_SHMEM_NAME_MAX ]; /* cstr holding the original wksp name */
+};
+
+typedef struct fd_wksp_preview fd_wksp_preview_t;
+
 int
-fd_wksp_restore_preview( char const * path,
-                         uint *       out_seed,
-                         ulong *      out_part_max,
-                         ulong *      out_data_max );
+fd_wksp_preview( char const *        path,
+                 fd_wksp_preview_t * _opt_preview );
+
+/* fd_wksp_printf pretty prints to fd (e.g. fileno(stdout)) information
+   about the wksp checkpt at path.  verbose specifies the verbosity
+   level.  Typical verbose levels are:
+
+     <0 - do not print
+      0 - preview info
+      1 - verbose 0 + metadata
+      2 - verbose 1 + build and user info
+      3 - verbose 2 + partition summary info
+      4 - verbose 3 + individual allocated partition metdata
+     >4 - verbose 4 + hex dumps of allocated partition data
+
+   but this can vary for different checkpt styles.  The return value has
+   the same interpretation as printf. */
+
+int
+fd_wksp_printf( int          fd,
+                char const * path,
+                int          verbose );
 
 /* fd_wksp_mprotect marks all the memory in a workspace as read-only
    (flag==1) or read-write (flag==0). Accessing read-only memory produces
