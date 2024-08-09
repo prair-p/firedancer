@@ -880,8 +880,6 @@ after_frag( void *             _ctx,
         fd_tpool_wait( ctx->tpool, i+1 );
       }
       int res = fd_runtime_block_execute_finalize_tpool( &fork->slot_ctx, ctx->capture_ctx, block_info, ctx->tpool );
-      finalize_time_ns += fd_log_wallclock();
-      FD_LOG_DEBUG(("TIMING: finish_time - slot: %lu, elapsed: %6.6f ms", curr_slot, (double)finalize_time_ns * 1e-6));
 
       if( res != FD_RUNTIME_EXECUTE_SUCCESS ) {
         FD_LOG_ERR(("block finished failed"));
