@@ -452,8 +452,12 @@ during_frag( void * _ctx,
   fd_blockstore_start_read( ctx->blockstore );
   fd_block_map_t * block_map_entry = fd_blockstore_block_map_query( ctx->blockstore, ctx->curr_slot );
   if( FD_LIKELY( block_map_entry ) ) {
-    if( fd_uchar_extract_bit( block_map_entry->flags, FD_BLOCK_FLAG_PROCESSED ) ) {
+    if( FD_UNLIKELY( fd_uchar_extract_bit( block_map_entry->flags, FD_BLOCK_FLAG_PROCESSED ) ) ) {
       FD_LOG_WARNING(( "block already processed - slot: %lu", ctx->curr_slot ));
+      *opt_filter = 1;
+    }
+    if( FD_UNLIKELY( fd_uchar_extract_bit( block_map_entry->flags, FD_BLOCK_FLAG_DEADBLOCK ) ) ) {
+      FD_LOG_WARNING(( "block already dead - slot: %lu", ctx->curr_slot ));
       *opt_filter = 1;
     }
   }
@@ -769,10 +773,16 @@ after_frag( void *             _ctx,
             fd_mux_context_t * mux ) {
   fd_replay_tile_ctx_t * ctx = (fd_replay_tile_ctx_t *)_ctx;
   ulong curr_slot = ctx->curr_slot;
+  ulong parent_slot = ctx->parent_slot;
   ulong flags     = ctx->flags;
   ulong bank_idx = ctx->bank_idx;
   if ( FD_UNLIKELY( curr_slot < ctx->tower->root ) ) {
-    FD_LOG_WARNING(( "ignoring replay of slot %lu. earlier than our root %lu.", curr_slot, ctx->tower->root ));
+    FD_LOG_WARNING(( "ignoring replay of slot %lu (parent: %lu). earlier than our root %lu.", curr_slot, parent_slot, ctx->tower->root ));
+    return;
+  }
+
+  if ( FD_UNLIKELY( parent_slot < ctx->tower->root ) ) {
+    FD_LOG_WARNING(( "ignoring replay of slot %lu (parent: %lu). parent slot is earlier than our root %lu.", curr_slot, parent_slot, ctx->tower->root ));
     return;
   }
 
@@ -835,6 +845,21 @@ after_frag( void *             _ctx,
 
     if( res != 0 && !( flags & REPLAY_FLAG_PACKED_MICROBLOCK ) ) {
       FD_LOG_WARNING(( "block invalid - slot: %lu", curr_slot ));
+
+      fd_block_map_t * block_map_entry = fd_blockstore_block_map_query( ctx->blockstore, curr_slot );
+      fd_block_t * block_ = fd_blockstore_block_query( ctx->blockstore, curr_slot );
+
+      fd_blockstore_start_write( ctx->blockstore );
+
+      if( FD_LIKELY( block_ ) ) {
+        block_map_entry->flags = fd_uchar_set_bit( block_map_entry->flags, FD_BLOCK_FLAG_DEADBLOCK );
+        FD_COMPILER_MFENCE();
+        block_map_entry->flags = fd_uchar_clear_bit( block_map_entry->flags, FD_BLOCK_FLAG_REPLAYING );
+        memcpy( &block_map_entry->bank_hash, &fork->slot_ctx.slot_bank.banks_hash, sizeof( fd_hash_t ) );
+      }
+
+      fd_blockstore_end_write( ctx->blockstore );
+
       *opt_filter = 1;
       return;
     }
