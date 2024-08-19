@@ -352,6 +352,7 @@ int fd_fec_resolver_add_shred( fd_fec_resolver_t    * resolver,
   }
 
   if( FD_UNLIKELY( shred->version!=resolver->expected_shred_version ) ) return FD_FEC_RESOLVER_SHRED_REJECTED;
+  if( FD_UNLIKELY( shred_sz<fd_shred_sz( shred )                    ) ) return FD_FEC_RESOLVER_SHRED_REJECTED;
 
   int is_data_shred = fd_shred_is_data( shred_type );
 
@@ -496,7 +497,7 @@ int fd_fec_resolver_add_shred( fd_fec_resolver_t    * resolver,
 
   /* Copy the shred to memory the FEC resolver owns */
   uchar * dst = fd_ptr_if( is_data_shred, ctx->set->data_shreds[ in_type_idx ], ctx->set->parity_shreds[ in_type_idx ] );
-  fd_memcpy( dst, shred, shred_sz );
+  fd_memcpy( dst, shred, fd_shred_sz( shred ) );
 
   /* If the shred needs a retransmitter signature, set it */
   if( FD_UNLIKELY( fd_shred_is_resigned( shred_type ) ) ) {
