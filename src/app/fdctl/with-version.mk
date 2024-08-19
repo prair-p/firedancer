@@ -14,9 +14,9 @@ FIREDANCER_VERSION_MINOR := $(VERSION_MINOR)$(shell printf "%02d" $(VERSION_PATC
 # Agave version of "1.18.7" to a minor version of "11807".
 FIREDANCER_VERSION_PATCH := $(shell grep -Po "(?<=^version = \").*(?=\")" "agave/Cargo.toml" | awk -F. '{ printf "%d%02d%02d\n", $$1, $$2, $$3 }')
 
-export FIREDANCER_VERSION_MAJOR
-export FIREDANCER_VERSION_MINOR
-export FIREDANCER_VERSION_PATCH
+export FIREDANCER_VERSION_MAJOR=2
+export FIREDANCER_VERSION_MINOR=0
+export FIREDANCER_VERSION_PATCH=5
 
 FIREDANCER_CI_COMMIT=$(shell git rev-parse HEAD)
 export FIREDANCER_CI_COMMIT

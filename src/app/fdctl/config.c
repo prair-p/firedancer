@@ -629,7 +629,7 @@ fdctl_cfg_from_env( int *      pargc,
     replace( config->consensus.authorized_voter_paths[ i ], "{name}", config->name );
   }
 
-  if( FD_UNLIKELY( config->is_live_cluster && cluster!=FD_CONFIG_CLUSTER_TESTNET ) )
+  if( FD_UNLIKELY( config->is_live_cluster && cluster!=FD_CONFIG_CLUSTER_TESTNET && cluster!=FD_CONFIG_CLUSTER_MAINNET_BETA ) )
     FD_LOG_ERR(( "Attempted to start against live cluster `%s`. Firedancer is not "
                  "ready for production deployment, has not been tested, and is "
                  "missing consensus critical functionality. Joining a live Solana "
