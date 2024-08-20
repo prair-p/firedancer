@@ -193,7 +193,7 @@ struct fd_replay_tile_ctx {
   ulong   bank_cnt;
   fd_replay_out_ctx_t bank_out[ FD_PACK_MAX_BANK_TILES ];
 
-  ulong * smr;  /* super-majority root slot */
+  ulong * smr;  /* supermajority root slot */
   ulong * poh;  /* proof-of-history slot */
   uint poh_init_done;
 
@@ -873,6 +873,7 @@ after_frag( void *             _ctx,
       if( FD_LIKELY( block_ ) ) {
         block_map_entry->flags = fd_uchar_set_bit( block_map_entry->flags, FD_BLOCK_FLAG_PROCESSED );
         block_map_entry->flags = fd_uchar_clear_bit( block_map_entry->flags, FD_BLOCK_FLAG_REPLAYING );
+        ctx->blockstore->lps   = block_map_entry->slot;
         memcpy( &block_map_entry->bank_hash, &fork->slot_ctx.slot_bank.banks_hash, sizeof( fd_hash_t ) );
       }
 
