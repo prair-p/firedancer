@@ -148,7 +148,7 @@ request( fd_http_server_request_t const * request ) {
     if( strcmp(request->path, "/") != 0 ) {
       fd_web_error( ws, "POST path must be \"/\"" );
 
-    } else if( strncasecmp(request->headers.content_type, "application/json", 16) != 0 ) {
+    } else if( strncasecmp( request->headers.content_type, "application/json", 16 ) != 0 ) {
       fd_web_error( ws, "content type must be \"application/json\"" );
 
     } else {
