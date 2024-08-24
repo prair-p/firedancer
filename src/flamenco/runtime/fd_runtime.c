@@ -1372,9 +1372,7 @@ fd_runtime_finalize_txn( fd_exec_slot_ctx_t *         slot_ctx,
 
     /* Reset lamports to after fee for borrowed account then save */
     txn_ctx->borrowed_accounts[0].meta->info.lamports = txn_ctx->borrowed_accounts[0].starting_lamports;
-    fd_funk_start_write( slot_ctx->acc_mgr->funk );
     fd_acc_mgr_save_non_tpool( slot_ctx->acc_mgr, slot_ctx->funk_txn, &txn_ctx->borrowed_accounts[0] );
-    fd_funk_end_write( slot_ctx->acc_mgr->funk );
 
     for( ulong i=1UL; i<txn_ctx->accounts_cnt; i++ ) {
       if( txn_ctx->nonce_accounts[i] ) {
@@ -1387,9 +1385,7 @@ fd_runtime_finalize_txn( fd_exec_slot_ctx_t *         slot_ctx,
         }
 
         if( !fd_executor_is_blockhash_valid_for_age( &queue, recent_blockhash, FD_RECENT_BLOCKHASHES_MAX_ENTRIES ) ) {
-          fd_funk_start_write( slot_ctx->acc_mgr->funk );
           fd_acc_mgr_save_non_tpool( slot_ctx->acc_mgr, slot_ctx->funk_txn, &txn_ctx->borrowed_accounts[i] );
-          fd_funk_end_write( slot_ctx->acc_mgr->funk );
         }
       }
     }
@@ -1452,9 +1448,7 @@ fd_runtime_finalize_txn( fd_exec_slot_ctx_t *         slot_ctx,
         fd_txn_set_exempt_rent_epoch_max( txn_ctx, &txn_ctx->accounts[i] );
       }
 
-      fd_funk_start_write( slot_ctx->acc_mgr->funk );
       fd_acc_mgr_save_non_tpool( slot_ctx->acc_mgr, slot_ctx->funk_txn, &txn_ctx->borrowed_accounts[i] );
-      fd_funk_end_write( slot_ctx->acc_mgr->funk );
     }
   }
   ulong curr = slot_ctx->signature_cnt;

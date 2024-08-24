@@ -9,7 +9,7 @@ cd ../test-ledger/
 
 cleanup() {
   sudo killall -9 -q fddev || true
-  fddev configure fini all >/dev/null 2>&1 || true
+  sudo $FD_DIR/build/native/$CC/bin/fddev configure fini all --config $(readlink -f fddev.toml) || true
 }
 
 trap cleanup EXIT SIGINT SIGTERM
@@ -38,13 +38,14 @@ name = \"fd1\"
     affinity = \"1-60\"
     quic_tile_count = 1
     bank_tile_count = 6
-    verify_tile_count = 30
-    shred_tile_count = 1
+    verify_tile_count = 10
+    shred_tile_count = 4
+    net_tile_count = 1
 [gossip]
     port = 8700
 [tiles]
     [tiles.pack]
-        max_pending_transactions = 4096
+        max_pending_transactions = 32768
     [tiles.gossip]
         entrypoints = [\"$PRIMARY_IP\"]
         peer_ports = [8001]
@@ -64,6 +65,8 @@ name = \"fd1\"
         cluster_version = 1180
     [tiles.shred]
         max_pending_shred_sets = 16384
+    [tiles.verify]
+        receive_buffer_size = 65536
 [log]
     path = \"fddev.log\"
     level_stderr = \"INFO\"

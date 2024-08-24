@@ -293,7 +293,6 @@ fd_exec_packed_txns_task( void *tpool,
 
   fd_runtime_execute_pack_txns( slot_ctx, capture_ctx, txns, txn_cnt );
 
-
   fd_microblock_trailer_t * microblock_trailer = (fd_microblock_trailer_t *)(txns + txn_cnt);
 
   hash_transactions( bmtree, txns, txn_cnt, microblock_trailer->hash );
@@ -576,24 +575,24 @@ publish_notifications( fd_replay_tile_ctx_t * ctx,
 
   ulong tsorig = fd_frag_meta_ts_comp( fd_tickcount() );
   fd_replay_notif_msg_t * msg = NULL;
-  for( fd_funk_rec_t const * rec = fd_funk_txn_first_rec( ctx->funk, fork->slot_ctx.funk_txn );
-        rec != NULL;
-        rec = fd_funk_txn_next_rec( ctx->funk, rec ) ) {
-    if( !fd_funk_key_is_acc( rec->pair.key ) ) continue;
-    if( msg == NULL ) {
-      NOTIFY_START;
-      msg->type = FD_REPLAY_SAVED_TYPE;
-      msg->acct_saved.funk_xid = rec->pair.xid[0];
-      msg->acct_saved.acct_id_cnt = 0;
-    }
-    fd_memcpy( msg->acct_saved.acct_id[ msg->acct_saved.acct_id_cnt++ ].uc, rec->pair.key->uc, sizeof(fd_pubkey_t) );
-    if( msg->acct_saved.acct_id_cnt == FD_REPLAY_NOTIF_ACCT_MAX ) {
-      NOTIFY_END;
-    }
-  }
-  if( msg ) {
-    NOTIFY_END;
-  }
+  // for( fd_funk_rec_t const * rec = fd_funk_txn_first_rec( ctx->funk, fork->slot_ctx.funk_txn );
+  //       rec != NULL;
+  //       rec = fd_funk_txn_next_rec( ctx->funk, rec ) ) {
+  //   if( !fd_funk_key_is_acc( rec->pair.key ) ) continue;
+  //   if( msg == NULL ) {
+  //     NOTIFY_START;
+  //     msg->type = FD_REPLAY_SAVED_TYPE;
+  //     msg->acct_saved.funk_xid = rec->pair.xid[0];
+  //     msg->acct_saved.acct_id_cnt = 0;
+  //   }
+  //   fd_memcpy( msg->acct_saved.acct_id[ msg->acct_saved.acct_id_cnt++ ].uc, rec->pair.key->uc, sizeof(fd_pubkey_t) );
+  //   if( msg->acct_saved.acct_id_cnt == FD_REPLAY_NOTIF_ACCT_MAX ) {
+  //     NOTIFY_END;
+  //   }
+  // }
+  // if( msg ) {
+  //   NOTIFY_END;
+  // }
 
   {
     NOTIFY_START;
@@ -792,7 +791,7 @@ after_frag( void *             _ctx,
   fd_txn_p_t * txns       = (fd_txn_p_t *)fd_chunk_to_laddr( bank_out->mem, bank_out->chunk );
   // FD_TEST( txn_cnt>0UL && flags & REPLAY_FLAG_FINISHED_BLOCK );
   fd_microblock_trailer_t * microblock_trailer = (fd_microblock_trailer_t *)(txns + txn_cnt);
-  microblock_trailer->bank_idx                 = 0;
+  microblock_trailer->bank_idx                 = bank_idx;
   microblock_trailer->bank_busy_seq            = seq;
 
   ulong epoch_ctx_idx = fd_epoch_forks_get_epoch_ctx( ctx->epoch_forks, ctx->ghost, curr_slot, &ctx->parent_slot );
@@ -865,7 +864,7 @@ after_frag( void *             _ctx,
     }
 
     if( flags & REPLAY_FLAG_FINISHED_BLOCK ) {
-      FD_LOG_INFO(( "finished block - slot: %lu, parent_slot: %lu, blockhash: %32J", curr_slot, ctx->parent_slot, ctx->blockhash.uc ));
+      FD_LOG_INFO(( "finished block - slot: %lu, parent_slot: %lu, txn_cnt: %lu, blockhash: %32J", curr_slot, ctx->parent_slot, fork->slot_ctx.slot_bank.transaction_count, ctx->blockhash.uc ));
       // Copy over latest blockhash to slot_bank poh for updating the sysvars
       fd_memcpy( fork->slot_ctx.slot_bank.poh.uc, ctx->blockhash.uc, sizeof(fd_hash_t) );
       fd_block_info_t block_info[1];
@@ -1343,14 +1342,14 @@ during_housekeeping( void * _ctx ) {
      TODO refactor this to a variable on the replay tile ctx. */
 
   if( FD_UNLIKELY( !ctx->blockstore ) ) return;
-  fd_blockstore_start_read( ctx->blockstore );
-  if( FD_UNLIKELY( ctx->blockstore->smr > smr ) ) {
-    FD_LOG_ERR( ( "invariant violation. fseq SMR should always be monotonically increasing and "
-                  ">= fork-aware data structures SMR. fseq SMR %lu, blockstore SMR %lu",
-                  smr,
-                  ctx->blockstore->smr ) );
-  }
-  fd_blockstore_end_read( ctx->blockstore );
+  // fd_blockstore_start_read( ctx->blockstore );
+  // if( FD_UNLIKELY( ctx->blockstore->smr > smr ) ) {
+  //   FD_LOG_ERR( ( "invariant violation. fseq SMR should always be monotonically increasing and "
+  //                 ">= fork-aware data structures SMR. fseq SMR %lu, blockstore SMR %lu",
+  //                 smr,
+  //                 ctx->blockstore->smr ) );
+  // }
+  // fd_blockstore_end_read( ctx->blockstore );
   if( FD_LIKELY( ctx->blockstore->smr == smr ) ) return;
   if( FD_LIKELY( ctx->blockstore ) ) blockstore_publish( ctx, smr );
   if( FD_LIKELY( ctx->forks ) ) fd_forks_publish( ctx->forks, smr, ctx->ghost );

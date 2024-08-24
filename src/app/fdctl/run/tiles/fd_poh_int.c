@@ -299,8 +299,10 @@ during_frag( void * _ctx,
     FD_TEST( raw_sz<=1024*USHORT_MAX );
     fd_memcpy( ctx->_txns, src, raw_sz-sizeof(fd_microblock_trailer_t) );
     fd_memcpy( ctx->_microblock_trailer, src+(sz * sizeof(fd_txn_p_t)), sizeof(fd_microblock_trailer_t) );
-    FD_TEST( ctx->_microblock_trailer->bank_idx<ctx->bank_cnt );
-
+    // FD_TEST( ctx->_microblock_trailer->bank_idx<ctx->bank_cnt );
+    if( !( ctx->_microblock_trailer->bank_idx<ctx->bank_cnt ) ) {
+      FD_LOG_ERR(( "bad microblock trailer bank idx - bank_idx: %lu, bank_cnt: %lu", ctx->_microblock_trailer->bank_idx, ctx->bank_cnt ));
+    }
     /* Indicate to pack tile we are done processing the transactions so
        it can pack new microblocks using these accounts.  This has to be
        done before filtering the frag, otherwise we would not notify
