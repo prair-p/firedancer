@@ -35,10 +35,10 @@ done
 echo "
 name = \"fd1\"
 [layout]
-    affinity = \"1-60\"
+    affinity = \"0-32\"
     quic_tile_count = 1
     bank_tile_count = 6
-    verify_tile_count = 10
+    verify_tile_count = 4
     shred_tile_count = 4
     net_tile_count = 1
 [gossip]
@@ -66,7 +66,7 @@ name = \"fd1\"
     [tiles.shred]
         max_pending_shred_sets = 16384
     [tiles.verify]
-        receive_buffer_size = 65536
+        receive_buffer_size = 16384
 [log]
     path = \"fddev.log\"
     level_stderr = \"INFO\"

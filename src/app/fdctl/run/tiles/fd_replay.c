@@ -65,7 +65,7 @@
 /* Scratch space estimates.
    TODO: Update constants and add explanation
 */
-#define SCRATCH_MAX    (1024UL /*MiB*/ << 21)
+#define SCRATCH_MAX    (256UL /*MiB*/ << 21)
 #define SCRATCH_DEPTH  (128UL) /* 128 scratch frames */
 #define TPOOL_WORKER_MEM_SZ (1UL<<28UL) /* 256MB */
 
@@ -215,7 +215,7 @@ scratch_align( void ) {
 
 FD_FN_PURE static inline ulong
 loose_footprint( fd_topo_tile_t const * tile FD_PARAM_UNUSED ) {
-  return 50UL * FD_SHMEM_GIGANTIC_PAGE_SZ;
+  return 24UL * FD_SHMEM_GIGANTIC_PAGE_SZ;
 }
 
 FD_FN_PURE static inline ulong
@@ -864,7 +864,7 @@ after_frag( void *             _ctx,
     }
 
     if( flags & REPLAY_FLAG_FINISHED_BLOCK ) {
-      FD_LOG_INFO(( "finished block - slot: %lu, parent_slot: %lu, txn_cnt: %lu, blockhash: %32J", curr_slot, ctx->parent_slot, fork->slot_ctx.slot_bank.transaction_count, ctx->blockhash.uc ));
+      FD_LOG_INFO(( "finished block - slot: %lu, parent_slot: %lu, txn_cnt: %lu, blockhash: %32J", curr_slot, ctx->parent_slot, fork->slot_ctx.slot_bank.transaction_count-fork->slot_ctx.parent_transaction_count, ctx->blockhash.uc ));
       // Copy over latest blockhash to slot_bank poh for updating the sysvars
       fd_memcpy( fork->slot_ctx.slot_bank.poh.uc, ctx->blockhash.uc, sizeof(fd_hash_t) );
       fd_block_info_t block_info[1];

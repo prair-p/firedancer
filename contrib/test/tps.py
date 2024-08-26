@@ -3,9 +3,8 @@ import argparse
 import time
 
 def get_txn_cnt(rpc: str):
-  data="{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"getTransactionCount\",\"params\":[{\"commitment\":\"confirmed\"}]}"
+  data="{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"getTransactionCount\",\"params\":[{\"commitment\":\"processed\"}]}"
   resp = requests.post(rpc, data=data, headers={"Content-Type": "application/json"})
-  print(resp.text)
   return resp.json()["result"]
 
 def parse_args() -> argparse.Namespace:
