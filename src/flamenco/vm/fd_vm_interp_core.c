@@ -663,11 +663,7 @@ interp_0x00: // FD_SBPF_OP_ADDL_IMM
   FD_VM_INTERP_INSTR_END;
 
   FD_VM_INTERP_BRANCH_BEGIN(0x95) /* FD_SBPF_OP_EXIT */
-    if( FD_UNLIKELY( !frame_cnt ) ) {
-        pc++;
-        pc0 = pc; /* Start a new linear segment */
-        goto sigexit; /* Exit program */
-    }
+    if( FD_UNLIKELY( !frame_cnt ) ) goto sigexit; /* Exit program */
     frame_cnt--;
     reg[6]   = shadow[ frame_cnt ].r6;
     reg[7]   = shadow[ frame_cnt ].r7;
@@ -812,9 +808,9 @@ interp_0x00: // FD_SBPF_OP_ADDL_IMM
      instruction and the number of non-branching instructions that have
      not yet been reflected in ic and cu is:
 
-       pc - pc0 - ic_correction
+       pc - pc0 - ic_correction + 1
 
-     as per the accounting described above.
+     as per the accounting described above. (FIXME: ADD REFERENCE TO AGAVE)
 
      Note that, for a sigtext caused by a branch instruction, pc0==pc
      (from the BRANCH_END) and ic_correction==0 (from the BRANCH_BEGIN)
@@ -824,7 +820,7 @@ interp_0x00: // FD_SBPF_OP_ADDL_IMM
      sigsplit. */
 
 #define FD_VM_INTERP_FAULT                                          \
-  ic_correction = pc - pc0 - ic_correction;                         \
+  ic_correction = pc - pc0 - ic_correction + 1UL;                   \
   ic += ic_correction;                                              \
   if ( FD_UNLIKELY( ic_correction > cu ) ) err = FD_VM_ERR_SIGCOST; \
   cu -= fd_ulong_min( ic_correction, cu )
@@ -840,7 +836,7 @@ sigsegv:     FD_VM_INTERP_FAULT;                  err = FD_VM_ERR_SIGSEGV;   got
 sigcost:     /* ic current */    cu = 0UL;        err = FD_VM_ERR_SIGCOST;   goto interp_halt;
 sigsyscall:  /* ic current */    /* cu current */ /* err current */          goto interp_halt;
 sigfpe:      FD_VM_INTERP_FAULT;                  err = FD_VM_ERR_SIGFPE;    goto interp_halt;
-sigexit:     FD_VM_INTERP_FAULT; /* cu current */ /* err current */         goto interp_halt;
+sigexit:     /* ic current */    /* cu current */ /* err current */         goto interp_halt;
 
 #undef FD_VM_INTERP_FAULT
 
