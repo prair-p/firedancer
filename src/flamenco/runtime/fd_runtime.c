@@ -1971,9 +1971,9 @@ fd_runtime_block_sysvar_update_pre_execute( fd_exec_slot_ctx_t * slot_ctx ) {
   fd_sysvar_fees_new_derived(slot_ctx, slot_ctx->slot_bank.fee_rate_governor, slot_ctx->parent_signature_cnt);
 
   // TODO: move all these out to a fd_sysvar_update() call...
-  long clock_update_time = -fd_log_wallclock();
+  // long clock_update_time = -fd_log_wallclock();
   fd_sysvar_clock_update(slot_ctx);
-  clock_update_time += fd_log_wallclock();
+  // clock_update_time += fd_log_wallclock();
   // double clock_update_time_ms = (double)clock_update_time * 1e-6;
   // FD_LOG_INFO(( "clock updated - slot: %lu, elapsed: %6.6f ms", slot_ctx->slot_bank.slot, clock_update_time_ms ));
   if (!FD_FEATURE_ACTIVE(slot_ctx, disable_fees_sysvar))

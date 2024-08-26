@@ -37,7 +37,7 @@ name = \"fd1\"
 [layout]
     affinity = \"0-32\"
     quic_tile_count = 1
-    bank_tile_count = 6
+    bank_tile_count = 4
     verify_tile_count = 4
     shred_tile_count = 4
     net_tile_count = 1
@@ -58,7 +58,7 @@ name = \"fd1\"
         # blockstore_checkpt = \"fddev-blockstore.checkpt\"
         blockstore_publish = true
         snapshot = \"$(ls snapshot-* | head -n1)\"
-        tpool_thread_count = 7
+        tpool_thread_count = 5
         funk_sz_gb = 16
         funk_rec_max = 10000000
         funk_txn_max = 1024

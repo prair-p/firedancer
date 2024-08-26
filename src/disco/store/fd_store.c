@@ -409,3 +409,4 @@ fd_store_slot_repair( fd_store_t * store,
     }
   }
   return repair_req_cnt;
+}

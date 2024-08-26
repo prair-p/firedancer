@@ -869,7 +869,7 @@ after_frag( void *             _ctx,
       fd_memcpy( fork->slot_ctx.slot_bank.poh.uc, ctx->blockhash.uc, sizeof(fd_hash_t) );
       fd_block_info_t block_info[1];
       block_info->signature_cnt = fork->slot_ctx.signature_cnt;
-      long finalize_time_ns = -fd_log_wallclock();
+      // long finalize_time_ns = -fd_log_wallclock();
       /* destroy the slot history */
       fd_bincode_destroy_ctx_t destroy_ctx = {
         .valloc = fork->slot_ctx.valloc,
