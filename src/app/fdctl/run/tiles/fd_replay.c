@@ -65,7 +65,7 @@
 /* Scratch space estimates.
    TODO: Update constants and add explanation
 */
-#define SCRATCH_MAX    (256UL /*MiB*/ << 21)
+#define SCRATCH_MAX    (1024UL /*MiB*/ << 21)
 #define SCRATCH_DEPTH  (128UL) /* 128 scratch frames */
 #define TPOOL_WORKER_MEM_SZ (1UL<<28UL) /* 256MB */
 
@@ -1067,7 +1067,7 @@ after_frag( void *             _ctx,
 
     if( ctx->poh_init_done == 1 && !( flags & REPLAY_FLAG_FINISHED_BLOCK )
         && ( ( flags & REPLAY_FLAG_MICROBLOCK ) ) ) {
-      FD_LOG_INFO(( "publishing mblk to poh - slot: %lu, parent_slot: %lu", curr_slot, ctx->parent_slot ));
+      // FD_LOG_INFO(( "publishing mblk to poh - slot: %lu, parent_slot: %lu", curr_slot, ctx->parent_slot ));
       ulong tspub = fd_frag_meta_ts_comp( fd_tickcount() );
       ulong sig = fd_disco_replay_sig( curr_slot, flags );
       fd_mcache_publish( bank_out->mcache, bank_out->depth, bank_out->seq, sig, bank_out->chunk, txn_cnt, 0UL, *opt_tsorig, tspub );

@@ -33,7 +33,7 @@ echo "
 name = \"fd1\"
 [layout]
     affinity = \"1-38\"
-    bank_tile_count = 1
+    bank_tile_count = 4
     verify_tile_count = 16
     shred_tile_count = 2
 [gossip]

@@ -321,7 +321,7 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
     case FD_STORE_SLOT_PREPARE_CONTINUE: {
       ulong root = fd_fseq_query( ctx->root_slot_fseq );
       if( root!=ULONG_MAX ) {
-        FD_LOG_WARNING(("CONTINUE: %lu", root));
+        // FD_LOG_WARNING(("CONTINUE: %lu", root));
         fd_store_set_root( ctx->store, root );
       }
       ctx->store->now = fd_log_wallclock();
@@ -404,8 +404,6 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
         replay_sig = fd_disco_replay_sig( slot, REPLAY_FLAG_FINISHED_BLOCK );
         FD_LOG_INFO(( "packed block prepared - slot: %lu, mblks: %lu, blockhash: %32J, txn_cnt: %lu, shred_cnt: %lu, data_sz: %lu", slot, block->micros_cnt, block_hash->uc, block->txns_cnt, block->shreds_cnt, block->data_sz ));
       } else {
-        fd_block_info_t block_info;
-        fd_runtime_block_prepare( block_data, block->data_sz, fd_scratch_virtual(), &block_info );
         
         fd_txn_p_t * txns = fd_type_pun( out_buf );
         FD_LOG_DEBUG(( "first turbine: %lu, current received turbine: %lu, behind: %lu current "
@@ -420,6 +418,7 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
         FD_MGAUGE_SET( REPLAY, CAUGHT_UP, caught_up );
         FD_MGAUGE_SET( REPLAY, BEHIND, behind );
 
+        FD_LOG_WARNING(("Block txn cnt %lu for slot %lu", block->txns_cnt, slot));
         fd_raw_block_txn_iter_t iter;
         fd_txn_iter_t * query = fd_txn_iter_map_query( ctx->txn_iter_map, slot, NULL);
         if( FD_LIKELY( query ) ) {
@@ -444,7 +443,7 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
         } else {
           replay_sig = fd_disco_replay_sig( slot, REPLAY_FLAG_FINISHED_BLOCK | REPLAY_FLAG_MICROBLOCK | caught_up_flag );
         }
-        FD_LOG_INFO(( "block prepared - slot: %lu, mblks: %lu, blockhash: %32J, txn_cnt: %lu, shred_cnt: %lu", slot, block_info.microblock_cnt, block_hash->uc, txn_cnt, block->shreds_cnt ));
+        // FD_LOG_INFO(( "block prepared - slot: %lu, mblks: %lu, blockhash: %32J, txn_cnt: %lu, shred_cnt: %lu", slot, block_info.microblock_cnt, block_hash->uc, txn_cnt, block->shreds_cnt ));
       }
 
       out_buf += sizeof(ulong);
