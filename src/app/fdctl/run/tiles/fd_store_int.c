@@ -42,7 +42,6 @@
 #define REPAIR_IN_IDX   1
 
 #define REPAIR_OUT_IDX  0
-#define REPLAY_OUT_IDX  1
 
 /* TODO: Determine/justify optimal number of repair requests */
 #define MAX_REPAIR_REQS  ( (ulong)USHORT_MAX / sizeof(fd_repair_request_t) )
@@ -296,6 +295,7 @@ privileged_init( fd_topo_t *      topo  FD_PARAM_UNUSED,
 
 static void
 fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
+                            fd_mux_context_t * mux_ctx,
                             int store_slot_prepare_mode,
                             ulong slot ) {
   ulong tsorig = fd_frag_meta_ts_comp( fd_tickcount() );
@@ -418,7 +418,6 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
         FD_MGAUGE_SET( REPLAY, CAUGHT_UP, caught_up );
         FD_MGAUGE_SET( REPLAY, BEHIND, behind );
 
-        FD_LOG_WARNING(("Block txn cnt %lu for slot %lu", block->txns_cnt, slot));
         fd_raw_block_txn_iter_t iter;
         fd_txn_iter_t * query = fd_txn_iter_map_query( ctx->txn_iter_map, slot, NULL);
         if( FD_LIKELY( query ) ) {
@@ -429,7 +428,7 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
 
         for( ; !fd_raw_block_txn_iter_done( iter ); iter = fd_raw_block_txn_iter_next( block_data, iter ) ) {
           /* TODO: remove magic number for txns per send */
-          if( txn_cnt == 1024 ) break;
+          if( txn_cnt == 512 ) break;
           fd_raw_block_txn_iter_ele( block_data, iter, txns + txn_cnt );
           txn_cnt++;
         }
@@ -449,8 +448,7 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
       out_buf += sizeof(ulong);
 
       ulong out_sz = sizeof(ulong) + sizeof(fd_hash_t) + ( txn_cnt * sizeof(fd_txn_p_t) );
-      fd_mcache_publish( ctx->replay_out_mcache, ctx->replay_out_depth, ctx->replay_out_seq, replay_sig, ctx->replay_out_chunk, txn_cnt, 0UL, tsorig, tspub );
-      ctx->replay_out_seq   = fd_seq_inc( ctx->replay_out_seq, 1UL );
+      fd_mux_publish( mux_ctx, replay_sig, ctx->replay_out_chunk, txn_cnt, 0UL, tsorig, tspub );
       ctx->replay_out_chunk = fd_dcache_compact_next( ctx->replay_out_chunk, out_sz, ctx->replay_out_chunk0, ctx->replay_out_wmark );
     } FD_SCRATCH_SCOPE_END;
   }
@@ -471,7 +469,7 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
 
 static void
 after_credit( void *             _ctx,
-	            fd_mux_context_t * mux_ctx FD_PARAM_UNUSED,
+	            fd_mux_context_t * mux_ctx,
               int *              opt_poll_in FD_PARAM_UNUSED ) {
   fd_store_tile_ctx_t * ctx = (fd_store_tile_ctx_t *)_ctx;
 
@@ -487,7 +485,7 @@ after_credit( void *             _ctx,
 
   for( ulong i = 0; i<fd_txn_iter_map_slot_cnt(); i++ ) {
     if( ctx->txn_iter_map[i].slot != FD_SLOT_NULL ) {
-      fd_store_tile_slot_prepare( ctx, FD_STORE_SLOT_PREPARE_CONTINUE, ctx->txn_iter_map[i].slot );
+      fd_store_tile_slot_prepare( ctx, mux_ctx, FD_STORE_SLOT_PREPARE_CONTINUE, ctx->txn_iter_map[i].slot );
     }
   }
 
@@ -500,7 +498,7 @@ after_credit( void *             _ctx,
 
     ulong slot = repair_slot == 0 ? i : repair_slot;
     FD_LOG_DEBUG(( "store slot - mode: %d, slot: %lu, repair_slot: %lu", store_slot_prepare_mode, i, repair_slot ));
-    fd_store_tile_slot_prepare( ctx, store_slot_prepare_mode, slot );
+    fd_store_tile_slot_prepare( ctx, mux_ctx, store_slot_prepare_mode, slot );
   }
 }
 
@@ -516,14 +514,13 @@ unprivileged_init( fd_topo_t *      topo,
     FD_LOG_ERR(( "store tile has none or unexpected input links %lu %s %s",
                  tile->in_cnt, topo->links[ tile->in_link_id[ 0 ] ].name, topo->links[ tile->in_link_id[ 1 ] ].name ));
 
-  if( FD_UNLIKELY( tile->out_cnt != 2 ||
-                   strcmp( topo->links[ tile->out_link_id[ REPAIR_OUT_IDX ] ].name, "store_repair" ) ||
-                   strcmp( topo->links[ tile->out_link_id[ REPLAY_OUT_IDX ] ].name, "store_replay" ) ) )
-    FD_LOG_ERR(( "store tile has none or unexpected output links %lu %s %s",
-                 tile->out_cnt, topo->links[ tile->out_link_id[ 0 ] ].name, topo->links[ tile->out_link_id[ 1 ] ].name ));
+  if( FD_UNLIKELY( tile->out_cnt != 1 ||
+                   strcmp( topo->links[ tile->out_link_id[ REPAIR_OUT_IDX ] ].name, "store_repair" ) ) )
+    FD_LOG_ERR(( "store tile has none or unexpected output links %lu %s",
+                 tile->out_cnt, topo->links[ tile->out_link_id[ 0 ] ].name ));
 
-  if( FD_UNLIKELY( tile->out_link_id_primary != ULONG_MAX ) )
-    FD_LOG_ERR(( "store tile has a primary output link" ));
+  if( FD_UNLIKELY( tile->out_link_id_primary == ULONG_MAX ) )
+    FD_LOG_ERR(( "store tile should have a primary output link" ));
 
   /* Scratch mem setup */
 
@@ -641,7 +638,7 @@ unprivileged_init( fd_topo_t *      topo,
   ctx->repair_req_out_chunk  = ctx->repair_req_out_chunk0;
 
   /* Set up replay output */
-  fd_topo_link_t * replay_out = &topo->links[ tile->out_link_id[ REPLAY_OUT_IDX ] ];
+  fd_topo_link_t * replay_out = &topo->links[ tile->out_link_id_primary ];
   ctx->replay_out_mcache = replay_out->mcache;
   ctx->replay_out_sync   = fd_mcache_seq_laddr( ctx->replay_out_mcache );
   ctx->replay_out_depth  = fd_mcache_depth( ctx->replay_out_mcache );

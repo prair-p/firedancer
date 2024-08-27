@@ -32,10 +32,10 @@ PRIMARY_IP=$(ip addr show $_PRIMARY_INTERFACE | awk '/inet / {print $2}' | cut -
 echo "
 name = \"fd1\"
 [layout]
-    affinity = \"1-38\"
-    bank_tile_count = 4
+    affinity = \"1-41\"
+    bank_tile_count = 5
     verify_tile_count = 16
-    shred_tile_count = 2
+    shred_tile_count = 4
 [gossip]
     port = 8700
 [tiles]

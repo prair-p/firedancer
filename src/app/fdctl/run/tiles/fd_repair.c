@@ -419,7 +419,6 @@ after_credit( void *             _ctx,
     if ( fd_wksp_tag_query(ctx->blockstore_wksp, &tag, 1, &info, 1) > 0 ) {
       void * shmem = fd_wksp_laddr_fast( ctx->blockstore_wksp, info.gaddr_lo );
       ctx->blockstore = fd_blockstore_join( shmem );
-      FD_LOG_WARNING(("Blockstore at load %lu", (ulong)ctx->blockstore));
     }
   }
 

@@ -700,12 +700,14 @@ fd_repair_is_full( fd_repair_t * glob ) {
 /* Test if a peer is good. Returns 1 if the peer is "great", 0 if the peer is "good", and -1 if the peer sucks */
 static int
 is_good_peer( fd_active_elem_t * val ) {
+  // FD_LOG_WARNING(("Avg resp %lu avg req %lu", val->avg_reps, val->avg_reqs));
   if( FD_UNLIKELY( NULL == val ) ) return -1;                          /* Very bad */
   if( val->avg_reqs > 10U && val->avg_reps == 0U )  return -1;         /* Bad, no response after 10 requests */
   if( val->avg_reqs < 20U ) return 0;                                  /* Not sure yet, good enough for now */
   if( (float)val->avg_reps < 0.01f*((float)val->avg_reqs) ) return -1; /* Very bad */
   if( (float)val->avg_reps < 0.8f*((float)val->avg_reqs) ) return 0;   /* 80%, Good but not great */
   if( (float)val->avg_lat > 2500e9f*((float)val->avg_reps) ) return 0;  /* 300ms, Good but not great */
+  (void) val;
   return 1;                                                            /* Great! */
 }
 
@@ -796,7 +798,7 @@ fd_actives_shuffle( fd_repair_t * repair ) {
 
     /* select an upper bound */
     /* acceptable latency is 2 * first quartile latency  */
-    long acceptable_latency = 2L * first_quartile_latency;
+    long acceptable_latency = first_quartile_latency != LONG_MAX ? 2L * first_quartile_latency : LONG_MAX;
     for( fd_active_table_iter_t iter = fd_active_table_iter_init( repair->actives );
          !fd_active_table_iter_done( repair->actives, iter );
          iter = fd_active_table_iter_next( repair->actives, iter ) ) {
@@ -828,7 +830,7 @@ fd_actives_shuffle( fd_repair_t * repair ) {
     if( leftovers_cnt ) {
       /* Always try afew new ones */
       ulong seed = repair->actives_random_seed;
-      for( ulong i = 0; i < 64 && tot_cnt < FD_REPAIR_STICKY_MAX; ++i ) {
+      for( ulong i = 0; i < 64 && tot_cnt < FD_REPAIR_STICKY_MAX && tot_cnt < fd_active_table_key_cnt( repair->actives ); ++i ) {
         seed                                  = ( seed + 774583887101UL ) * 131UL;
         fd_active_elem_t * peer               = leftovers[seed % leftovers_cnt];
         repair->actives_sticky[tot_cnt++]     = peer->key;
