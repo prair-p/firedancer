@@ -1012,8 +1012,6 @@ fd_repair_send_ping(fd_repair_t * glob, fd_gossip_peer_addr_t const * addr, fd_p
   fd_repair_response_new_disc( &gmsg, fd_repair_response_enum_ping );
   fd_gossip_ping_t * ping = &gmsg.inner.ping;
   fd_hash_copy( &ping->from, glob->public_key );
-  for ( ulong i = 0; i < FD_HASH_FOOTPRINT / sizeof(ulong); i++ )
-    val->token.ul[i] = fd_rng_ulong(glob->rng);
 
   uchar pre_image[FD_PING_PRE_IMAGE_SZ];
   memcpy( pre_image, "SOLANA_PING_PONG", 16UL );
@@ -1060,6 +1058,7 @@ fd_repair_recv_pong(fd_repair_t * glob, fd_gossip_ping_t const * pong, fd_gossip
                          /* sig */ pong->signature.uc,
                          /* public_key */ pong->from.uc,
                          sha2 )) {
+    FD_LOG_WARNING(("Failed sig verify for pong"));
     return;
   }
 
@@ -1139,6 +1138,8 @@ fd_repair_recv_serv_packet(fd_repair_t * glob, uchar const * msg, ulong msglen, 
           return 0;
         }
         val = fd_pinged_table_insert(glob->pinged, from);
+        for ( ulong i = 0; i < FD_HASH_FOOTPRINT / sizeof(ulong); i++ )
+          val->token.ul[i] = fd_rng_ulong(glob->rng);
       }
       fd_hash_copy( &val->id, &header->sender );
       val->good = 0;

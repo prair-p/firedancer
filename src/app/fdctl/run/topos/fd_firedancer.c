@@ -141,8 +141,8 @@ fd_topo_firedancer( config_t * _config ) {
   /**/                 fd_topob_link( topo, "repair_net",   "net_repair",   0,        config->tiles.net.send_buffer_size,       FD_NET_MTU,                    1UL   );
   /**/                 fd_topob_link( topo, "repair_sign",  "repair_sign",  0,        128UL,                                    2048UL,                        1UL );
   /**/                 fd_topob_link( topo, "sign_repair",  "sign_repair",  0,        128UL,                                    64UL,                          1UL );
-  /**/                 fd_topob_link( topo, "store_replay", "store_replay", 0,        128UL,                                    (1024UL*sizeof(fd_txn_p_t))+sizeof(ulong)+sizeof(fd_hash_t), 16UL  );
-  FOR(bank_tile_cnt)   fd_topob_link( topo, "replay_poh",   "replay_poh",   0,        128UL,                                    (1024UL*sizeof(fd_txn_p_t))+sizeof(fd_microblock_trailer_t), 1UL  );
+  /**/                 fd_topob_link( topo, "store_replay", "store_replay", 0,        128UL,                                    (4096UL*sizeof(fd_txn_p_t))+sizeof(ulong)+sizeof(fd_hash_t), 16UL  );
+  FOR(bank_tile_cnt)   fd_topob_link( topo, "replay_poh",   "replay_poh",   0,        128UL,                                    (4096UL*sizeof(fd_txn_p_t))+sizeof(fd_microblock_trailer_t), 1UL  );
   /**/                 fd_topob_link( topo, "replay_notif", "replay_notif", 0,        FD_REPLAY_NOTIF_DEPTH,                    FD_REPLAY_NOTIF_MTU,           1UL   );
   /**/                 fd_topob_link( topo, "poh_shred",    "poh_shred",    0,        16384UL,                                  USHORT_MAX,                    1UL   );
   /**/                 fd_topob_link( topo, "pack_replay",  "pack_replay",  0,        65536UL,                                  USHORT_MAX,                    1UL   );

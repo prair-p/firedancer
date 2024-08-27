@@ -428,7 +428,7 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
 
         for( ; !fd_raw_block_txn_iter_done( iter ); iter = fd_raw_block_txn_iter_next( block_data, iter ) ) {
           /* TODO: remove magic number for txns per send */
-          if( txn_cnt == 512 ) break;
+          if( txn_cnt == 4096 ) break;
           fd_raw_block_txn_iter_ele( block_data, iter, txns + txn_cnt );
           txn_cnt++;
         }
