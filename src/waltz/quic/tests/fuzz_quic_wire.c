@@ -109,12 +109,8 @@ LLVMFuzzerTestOneInput( uchar const * data,
     .conn_cnt         = 2,
     .handshake_cnt    = 16,
     .conn_id_cnt      = 16,
-    .conn_id_sparsity = 1.0,
-    .stream_cnt       = { 1, 1, 1, 1 },
-    .stream_sparsity  = 1.0,
     .inflight_pkt_cnt = 8UL,
-    .tx_buf_sz        = 4096UL,
-    .stream_pool_cnt  = 1024
+    .tx_stream_cnt    = 1
   };
 
   /* Enable features depending on the last few bits.  The last bits are
@@ -144,30 +140,23 @@ LLVMFuzzerTestOneInput( uchar const * data,
   assert( fd_quic_init( quic ) );
 
   /* Create dummy connection */
-  fd_quic_conn_id_t our_conn_id  = { .sz=8 };
+  ulong             our_conn_id  = 0UL;
   fd_quic_conn_id_t peer_conn_id = { .sz=8 };
   uint              dst_ip_addr  = 0U;
   ushort            dst_udp_port = (ushort)0;
 
   fd_quic_conn_t * conn =
     fd_quic_conn_create( quic,
-                        &our_conn_id, &peer_conn_id,
+                        our_conn_id, &peer_conn_id,
                         dst_ip_addr,  (ushort)dst_udp_port,
                         1,  /* we are the server */
                         1   /* QUIC version 1 */ );
   assert( conn );
 
-  conn->tx_max_data                            =       512UL;
-  conn->tx_initial_max_stream_data_uni         =        64UL;
-  conn->rx_max_data                            =       512UL;
-  conn->rx_initial_max_stream_data_uni         =        64UL;
-  conn->tx_max_datagram_sz                     = FD_QUIC_MTU;
-  fd_quic_conn_set_max_streams( conn, 0, 1 );
-  fd_quic_conn_set_max_streams( conn, 1, 1 );
-  conn->peer_sup_stream_id[ 0 ] = 32UL;
-  conn->peer_sup_stream_id[ 1 ] = 32UL;
-  conn->peer_sup_stream_id[ 2 ] = 32UL;
-  conn->peer_sup_stream_id[ 3 ] = 32UL;
+  conn->tx_max_data                    = 512UL;
+  conn->tx_initial_max_stream_data_uni =  64UL;
+  conn->rx_max_data                    = 512UL;
+  conn->tx_sup_stream_id               =  32UL;
 
   if( established ) {
     conn->state = FD_QUIC_CONN_STATE_ACTIVE;

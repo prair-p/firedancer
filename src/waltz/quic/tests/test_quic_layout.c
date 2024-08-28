@@ -9,10 +9,8 @@ main( int argc, char ** argv ) {
   (void)argv;
 
   ulong pkt_sz   = sizeof( fd_quic_pkt_u );
-  ulong frame_sz = sizeof( fd_quic_frame_u );
 
   printf( "packet union size: %lu\n", pkt_sz );
-  printf( "frame union size:  %lu\n", frame_sz );
 
   printf( "\n" );
   printf( "frame sizes:\n" );
