@@ -67,7 +67,7 @@
 */
 #define SCRATCH_MAX    (1024UL /*MiB*/ << 21)
 #define SCRATCH_DEPTH  (128UL) /* 128 scratch frames */
-#define TPOOL_WORKER_MEM_SZ (1UL<<28UL) /* 256MB */
+#define TPOOL_WORKER_MEM_SZ (1UL<<30UL) /* 256MB */
 
 #define VOTE_ACC_MAX   (2000000UL)
 

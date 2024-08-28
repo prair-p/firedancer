@@ -401,8 +401,11 @@ fd_scratch_prepare( ulong align ) {
 
 # if FD_SCRATCH_USE_HANDHOLDING
   if( FD_UNLIKELY( smem < fd_scratch_private_free ) ) FD_LOG_ERR(( "prepare align (%lu) overflow", true_align ));
-  if( FD_UNLIKELY( smem > fd_scratch_private_stop ) ) FD_LOG_ERR(( "prepare align (%lu) needs %lu additional scratch",
+  if( FD_UNLIKELY( smem > fd_scratch_private_stop ) ) {
+    __asm__("int $3");
+    FD_LOG_ERR(( "prepare align (%lu) needs %lu additional scratch",
                                                                    align, smem - fd_scratch_private_stop ));
+  }
   fd_scratch_in_prepare = 1;
 # endif
 

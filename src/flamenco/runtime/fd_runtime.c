@@ -980,18 +980,18 @@ fd_runtime_pre_execute_check( fd_execute_txn_task_info_t * task_info ) {
     return;
   }
 
-  /* Duplicate Account Check */
-  for( ushort i=0; i<txn_ctx->accounts_cnt; i++ ) {
-    for( ushort j=0; j<txn_ctx->accounts_cnt; j++ ) {
-      if( i==j ) continue;
+  // /* Duplicate Account Check */
+  // for( ushort i=0; i<txn_ctx->accounts_cnt; i++ ) {
+  //   for( ushort j=0; j<txn_ctx->accounts_cnt; j++ ) {
+  //     if( i==j ) continue;
 
-      if( FD_UNLIKELY( !memcmp( &txn_ctx->accounts[i], &txn_ctx->accounts[j], sizeof(fd_pubkey_t) ) ) ) {
-        task_info->txn->flags = 0U;
-        task_info->exec_res   = FD_RUNTIME_TXN_ERR_ACCOUNT_LOADED_TWICE;
-        return;
-      }
-    }
-  }
+  //     if( FD_UNLIKELY( !memcmp( &txn_ctx->accounts[i], &txn_ctx->accounts[j], sizeof(fd_pubkey_t) ) ) ) {
+  //       task_info->txn->flags = 0U;
+  //       task_info->exec_res   = FD_RUNTIME_TXN_ERR_ACCOUNT_LOADED_TWICE;
+  //       return;
+  //     }
+  //   }
+  // }
 
   /* https://github.com/anza-xyz/agave/blob/16de8b75ebcd57022409b422de557dd37b1de8db/runtime/src/bank.rs#L3529-L3554 */
   err = fd_check_transaction_age( txn_ctx );
@@ -1001,13 +1001,13 @@ fd_runtime_pre_execute_check( fd_execute_txn_task_info_t * task_info ) {
     return;
   }
 
-  /* https://github.com/anza-xyz/agave/blob/16de8b75ebcd57022409b422de557dd37b1de8db/runtime/src/bank.rs#L3568-L3591 */
-  err = fd_executor_check_status_cache( txn_ctx );
-  if( FD_UNLIKELY( err!=FD_RUNTIME_EXECUTE_SUCCESS ) ) {
-    task_info->txn->flags = 0U;
-    task_info->exec_res   = err;
-    return;
-  }
+  // /* https://github.com/anza-xyz/agave/blob/16de8b75ebcd57022409b422de557dd37b1de8db/runtime/src/bank.rs#L3568-L3591 */
+  // err = fd_executor_check_status_cache( txn_ctx );
+  // if( FD_UNLIKELY( err!=FD_RUNTIME_EXECUTE_SUCCESS ) ) {
+  //   task_info->txn->flags = 0U;
+  //   task_info->exec_res   = err;
+  //   return;
+  // }
 
   /* https://github.com/anza-xyz/agave/blob/16de8b75ebcd57022409b422de557dd37b1de8db/svm/src/transaction_processor.rs#L423-L430 */
   err = fd_executor_compute_budget_program_execute_instructions( txn_ctx, txn_ctx->_txn_raw );
@@ -1064,8 +1064,29 @@ fd_txn_prep_and_exec_task( void  *tpool,
                            ulong n0 FD_PARAM_UNUSED,      ulong n1 FD_PARAM_UNUSED ) {
 
   fd_execute_txn_task_info_t * task_info = (fd_execute_txn_task_info_t *)tpool + m0;
+  fd_exec_slot_ctx_t * slot_ctx = (fd_exec_slot_ctx_t *)args;
+  fd_capture_ctx_t * capture_ctx = (fd_capture_ctx_t *)reduce;
+
   fd_runtime_pre_execute_check( task_info );
   fd_runtime_execute_txn( task_info );
+
+  ulong curr = slot_ctx->slot_bank.collected_execution_fees;
+  FD_COMPILER_MFENCE();
+  while( FD_UNLIKELY( FD_ATOMIC_CAS( &slot_ctx->slot_bank.collected_execution_fees, curr, curr + task_info->txn_ctx->execution_fee ) != curr ) ) {
+    FD_SPIN_PAUSE();
+    curr = slot_ctx->slot_bank.collected_execution_fees;
+    FD_COMPILER_MFENCE();
+  }
+
+  curr = slot_ctx->slot_bank.collected_priority_fees;
+  FD_COMPILER_MFENCE();
+  while( FD_UNLIKELY( FD_ATOMIC_CAS( &slot_ctx->slot_bank.collected_priority_fees, curr, curr + task_info->txn_ctx->priority_fee ) != curr ) ) {
+    FD_SPIN_PAUSE();
+    curr = slot_ctx->slot_bank.collected_priority_fees;
+    FD_COMPILER_MFENCE();
+  }
+
+  fd_runtime_finalize_txn( slot_ctx, capture_ctx, task_info );
 
 }
 
@@ -1162,16 +1183,13 @@ fd_runtime_prep_and_exec_txns_tpool( fd_exec_slot_ctx_t *         slot_ctx,
   int res = 0;
   FD_SCRATCH_SCOPE_BEGIN {
 
-    fd_tpool_exec_all_rrobin( tpool, 0, fd_tpool_worker_cnt( tpool ), fd_txn_prep_and_exec_task, task_info, NULL, NULL, 1, 0, txn_cnt );
+    fd_tpool_exec_all_rrobin( tpool, 0, fd_tpool_worker_cnt( tpool ), fd_txn_prep_and_exec_task, task_info, slot_ctx, task_info->txn_ctx->capture_ctx, 1, 0, txn_cnt );
+
     for( ulong txn_idx=0UL; txn_idx<txn_cnt; txn_idx++ ) {
       if( FD_UNLIKELY( !( task_info[txn_idx].txn->flags & FD_TXN_P_FLAGS_SANITIZE_SUCCESS ) ) ) {
-        res |= task_info->exec_res;
+        res |= task_info[txn_idx].exec_res;
         continue;
       }
-
-      /* Propogate net fees back to slot_ctx */
-      slot_ctx->slot_bank.collected_execution_fees += task_info[txn_idx].txn_ctx->execution_fee;
-      slot_ctx->slot_bank.collected_priority_fees  += task_info[txn_idx].txn_ctx->priority_fee;
     }
 
   } FD_SCRATCH_SCOPE_END;
@@ -1375,21 +1393,21 @@ fd_runtime_finalize_txn( fd_exec_slot_ctx_t *         slot_ctx,
     fd_runtime_write_transaction_status( capture_ctx, slot_ctx, txn_ctx, exec_txn_err );
   }
 
-  if( slot_ctx->status_cache ) {
-    fd_txncache_insert_t * status_insert = fd_scratch_alloc( alignof(fd_txncache_insert_t), sizeof(fd_txncache_insert_t) );
-    uchar *                results       = fd_scratch_alloc( alignof(uchar), sizeof(uchar) );
+  // if( slot_ctx->status_cache ) {
+  //   fd_txncache_insert_t * status_insert = fd_scratch_alloc( alignof(fd_txncache_insert_t), sizeof(fd_txncache_insert_t) );
+  //   uchar *                results       = fd_scratch_alloc( alignof(uchar), sizeof(uchar) );
 
-    results[0] = exec_txn_err == 0 ? 1 : 0;
-    fd_txncache_insert_t * curr_insert = &status_insert[0];
-    curr_insert->blockhash = ((uchar *)txn_ctx->_txn_raw->raw + txn_ctx->txn_descriptor->recent_blockhash_off);
-    curr_insert->slot = slot_ctx->slot_bank.slot;
-    fd_hash_t * hash = &txn_ctx->blake_txn_msg_hash;
-    curr_insert->txnhash = hash->uc;
-    curr_insert->result = &results[0];
-    if( !fd_txncache_insert_batch( slot_ctx->status_cache, status_insert, 1UL ) ) {
-      FD_LOG_WARNING(("Status cache is full, this should not be possible"));
-    }
-  }
+  //   results[0] = exec_txn_err == 0 ? 1 : 0;
+  //   fd_txncache_insert_t * curr_insert = &status_insert[0];
+  //   curr_insert->blockhash = ((uchar *)txn_ctx->_txn_raw->raw + txn_ctx->txn_descriptor->recent_blockhash_off);
+  //   curr_insert->slot = slot_ctx->slot_bank.slot;
+  //   fd_hash_t * hash = &txn_ctx->blake_txn_msg_hash;
+  //   curr_insert->txnhash = hash->uc;
+  //   curr_insert->result = &results[0];
+  //   if( !fd_txncache_insert_batch( slot_ctx->status_cache, status_insert, 1UL ) ) {
+  //     FD_LOG_DEBUG(("Status cache is full, this should not be possible"));
+  //   }
+  // }
 
   if( FD_UNLIKELY( exec_txn_err ) ) {
 
@@ -1661,18 +1679,18 @@ fd_runtime_finalize_txns_tpool( fd_exec_slot_ctx_t *         slot_ctx,
       FD_LOG_ERR(( "failed merging funk transaction: (%i-%s) ", ret, fd_funk_strerror(ret) ));
     }
 
-    if( FD_LIKELY( slot_ctx->status_cache ) ) {
-      if( FD_UNLIKELY( !fd_txncache_insert_batch( slot_ctx->status_cache, status_insert, num_cache_txns ) ) ) {
-        FD_LOG_WARNING(("Status cache is full, this should not be possible"));
-      }
-    }
+    // if( FD_LIKELY( slot_ctx->status_cache ) ) {
+    //   if( FD_UNLIKELY( !fd_txncache_insert_batch( slot_ctx->status_cache, status_insert, num_cache_txns ) ) ) {
+    //     FD_LOG_WARNING(("Status cache is full, this should not be possible"));
+    //   }
+    // }
 
   return 0;
   } FD_SCRATCH_SCOPE_END;
 }
 
 struct fd_pubkey_map_node {
-  fd_pubkey_t pubkey;
+  ulong       pubkey;
   uint        hash;
 };
 typedef struct fd_pubkey_map_node fd_pubkey_map_node_t;
@@ -1680,12 +1698,17 @@ typedef struct fd_pubkey_map_node fd_pubkey_map_node_t;
 #define MAP_NAME                fd_pubkey_map
 #define MAP_T                   fd_pubkey_map_node_t
 #define MAP_KEY                 pubkey
-#define MAP_KEY_T               fd_pubkey_t
-#define MAP_KEY_NULL            pubkey_null
-#define MAP_KEY_INVAL( k )      !( memcmp( &k, &pubkey_null, sizeof( fd_pubkey_t ) ) )
-#define MAP_KEY_EQUAL( k0, k1 ) !( memcmp( ( &k0 ), ( &k1 ), sizeof( fd_pubkey_t ) ) )
+// #define MAP_KEY_T               fd_pubkey_t
+#define MAP_KEY_T               ulong
+// #define MAP_KEY_NULL            pubkey_null
+#define MAP_KEY_NULL            0
+// #define MAP_KEY_INVAL( k )      !( memcmp( &k, &pubkey_null, sizeof( fd_pubkey_t ) ) )
+#define MAP_KEY_INVAL( k )      k==0
+// #define MAP_KEY_EQUAL( k0, k1 ) !( memcmp( ( &k0 ), ( &k1 ), sizeof( fd_pubkey_t ) ) )
+#define MAP_KEY_EQUAL( k0, k1 ) k0==k1
 #define MAP_KEY_EQUAL_IS_SLOW   1
-#define MAP_KEY_HASH( key )     ( (uint)( fd_hash( 0UL, &key, sizeof( fd_pubkey_t ) ) ) )
+// #define MAP_KEY_HASH( key )     ( (uint)( fd_hash( 0UL, &key, sizeof( fd_pubkey_t ) ) ) )
+#define MAP_KEY_HASH( key )     ( (uint)key )
 #define MAP_MEMOIZE             1
 #include "../../util/tmpl/fd_map_dynamic.c"
 
@@ -1694,12 +1717,13 @@ static uint
 fd_pubkey_map_insert_if_not_in( fd_pubkey_map_node_t * map,
                                 fd_pubkey_t            pubkey ) {
   /* Check if entry already exists */
-  fd_pubkey_map_node_t * entry = fd_pubkey_map_query( map, pubkey, NULL );
+  ulong h = fd_hash( 0UL, &pubkey, sizeof( fd_pubkey_t ) );
+  fd_pubkey_map_node_t * entry = fd_pubkey_map_query( map, h, NULL );
   if( entry )
     return 1;
 
   /* Insert new */
-  entry = fd_pubkey_map_insert( map, pubkey );
+  entry = fd_pubkey_map_insert( map, h );
   if( FD_UNLIKELY( !entry ) ) return 0;  /* check for internal map collision */
 
   return 2;
@@ -1736,12 +1760,13 @@ fd_runtime_generate_wave( fd_execute_txn_task_info_t * task_infos,
       // }
 
       for( ulong j = 0; j < task_info->txn_ctx->accounts_cnt; j++ ) {
-        if( fd_pubkey_map_query( write_map, task_info->txn_ctx->accounts[j], NULL ) != NULL ) {
+        ulong h = fd_hash( 0UL, &task_info->txn_ctx->accounts[j], sizeof( fd_pubkey_t ) );
+        if( fd_pubkey_map_query( write_map, h, NULL ) != NULL ) {
           is_executable_now = 0;
           break;
         }
         if( fd_txn_account_is_writable_idx( task_info->txn_ctx, (int)j ) ) {
-          if( fd_pubkey_map_query( read_map, task_info->txn_ctx->accounts[j], NULL ) != NULL ) {
+          if( fd_pubkey_map_query( read_map, h, NULL ) != NULL ) {
             is_executable_now = 0;
             break;
           }
@@ -1816,8 +1841,8 @@ fd_runtime_execute_txns_in_waves_tpool( fd_exec_slot_ctx_t * slot_ctx,
                                         fd_txn_p_t *         all_txns,
                                         ulong                total_txn_cnt,
                                         fd_tpool_t *         tpool ) {
-    bool dump_txn = capture_ctx && slot_ctx->slot_bank.slot >= capture_ctx->dump_proto_start_slot && capture_ctx->dump_txn_to_pb;
-    #define BATCH_SIZE (1024UL)
+    // bool dump_txn = capture_ctx && slot_ctx->slot_bank.slot >= capture_ctx->dump_proto_start_slot && capture_ctx->dump_txn_to_pb;
+    #define BATCH_SIZE (128UL)
 
     for( ulong i=0UL; i<total_txn_cnt; i++ ) {
       all_txns[i].flags = FD_TXN_P_FLAGS_SANITIZE_SUCCESS;
@@ -1832,7 +1857,7 @@ fd_runtime_execute_txns_in_waves_tpool( fd_exec_slot_ctx_t * slot_ctx,
       FD_SCRATCH_SCOPE_BEGIN {
 
       fd_txn_p_t * txns    = all_txns + (BATCH_SIZE * i); 
-      ulong        txn_cnt = i+1UL==num_batches && rem ? rem : BATCH_SIZE;
+      ulong        txn_cnt = ((i+1UL==num_batches) && rem) ? rem : BATCH_SIZE;
 
       fd_execute_txn_task_info_t * task_infos = fd_scratch_alloc( 8, txn_cnt * sizeof(fd_execute_txn_task_info_t));
       fd_execute_txn_task_info_t * wave_task_infos = fd_scratch_alloc( 8, txn_cnt * sizeof(fd_execute_txn_task_info_t));
@@ -1852,15 +1877,17 @@ fd_runtime_execute_txns_in_waves_tpool( fd_exec_slot_ctx_t * slot_ctx,
         incomplete_txn_idxs[i] = i;
         incomplete_accounts_cnt += task_infos[i].txn_ctx->accounts_cnt;
         task_infos[i].txn_ctx->capture_ctx = capture_ctx;
+
+        task_infos[i].txn_ctx->valloc = fd_scratch_virtual();
       }
 
       ulong * next_incomplete_txn_idxs = fd_scratch_alloc( 8UL, txn_cnt * sizeof(ulong) );
       ulong next_incomplete_txn_idxs_cnt = 0;
       ulong next_incomplete_accounts_cnt = 0;
 
-      double cum_wave_time_ms = 0.0;
+      // double cum_wave_time_ms = 0.0;
       while( incomplete_txn_idxs_cnt > 0 ) {
-        long wave_time = -fd_log_wallclock();
+        // long wave_time = -fd_log_wallclock();
         fd_runtime_generate_wave( task_infos, incomplete_txn_idxs, incomplete_txn_idxs_cnt, incomplete_accounts_cnt,
                                   next_incomplete_txn_idxs, &next_incomplete_txn_idxs_cnt, &next_incomplete_accounts_cnt,
                                   wave_task_infos, &wave_task_infos_cnt );
@@ -1870,11 +1897,11 @@ fd_runtime_execute_txns_in_waves_tpool( fd_exec_slot_ctx_t * slot_ctx,
         incomplete_txn_idxs_cnt = next_incomplete_txn_idxs_cnt;
 
         // Dump txns in waves
-        if( dump_txn ) {
-          for( ulong i = 0; i < wave_task_infos_cnt; ++i ) {
-            dump_txn_to_protobuf( wave_task_infos[i].txn_ctx );
-          }
-        }
+        // if( dump_txn ) {
+        //   for( ulong i = 0; i < wave_task_infos_cnt; ++i ) {
+        //     dump_txn_to_protobuf( wave_task_infos[i].txn_ctx );
+        //   }
+        // }
 
         //res |= fd_runtime_verify_txn_signatures_tpool( wave_task_infos, wave_task_infos_cnt, tpool );
         //if( res != 0 ) {
@@ -1883,7 +1910,7 @@ fd_runtime_execute_txns_in_waves_tpool( fd_exec_slot_ctx_t * slot_ctx,
 
         res |= fd_runtime_prep_and_exec_txns_tpool( slot_ctx, wave_task_infos, wave_task_infos_cnt, tpool );
         if( res != 0 ) {
-          FD_LOG_DEBUG(("Fail prep 2"));
+          FD_LOG_WARNING(("Fail prep 2"));
         }
 
         // res |= fd_runtime_prepare_txns_phase3( slot_ctx, wave_task_infos, wave_task_infos_cnt );
@@ -1891,15 +1918,15 @@ fd_runtime_execute_txns_in_waves_tpool( fd_exec_slot_ctx_t * slot_ctx,
         //   FD_LOG_DEBUG(("Fail prep 3"));
         // }
 
-        int finalize_res = fd_runtime_finalize_txns_tpool( slot_ctx, capture_ctx, wave_task_infos, wave_task_infos_cnt, tpool );
-        if( finalize_res != 0 ) {
-         FD_LOG_ERR(("Fail finalize"));
-        }
+        // int finalize_res = fd_runtime_finalize_txns_tpool( slot_ctx, capture_ctx, wave_task_infos, wave_task_infos_cnt, tpool );
+        // if( finalize_res != 0 ) {
+        //  FD_LOG_ERR(("Fail finalize"));
+        // }
 
-        wave_time += fd_log_wallclock();
-        double wave_time_ms = (double)wave_time * 1e-6;
-        cum_wave_time_ms += wave_time_ms;
-        (void)cum_wave_time_ms;
+        // wave_time += fd_log_wallclock();
+        // double wave_time_ms = (double)wave_time * 1e-6;
+        // cum_wave_time_ms += wave_time_ms;
+        // (void)cum_wave_time_ms;
         // FD_LOG_INFO(( "wave executed - sz: %lu, accounts: %lu, elapsed: %6.6f ms, cum: %6.6f ms", wave_task_infos_cnt, incomplete_accounts_cnt - next_incomplete_accounts_cnt, wave_time_ms, cum_wave_time_ms ));
       }
       } FD_SCRATCH_SCOPE_END;

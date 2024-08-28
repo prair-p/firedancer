@@ -32,10 +32,10 @@ PRIMARY_IP=$(ip addr show $_PRIMARY_INTERFACE | awk '/inet / {print $2}' | cut -
 echo "
 name = \"fd1\"
 [layout]
-    affinity = \"1-41\"
-    bank_tile_count = 5
-    verify_tile_count = 16
-    shred_tile_count = 4
+    affinity = \"1-56\"
+    bank_tile_count = 4
+    verify_tile_count = 30
+    shred_tile_count = 6
 [gossip]
     port = 8700
 [tiles]
@@ -58,6 +58,7 @@ name = \"fd1\"
         cluster_version = 2004
     [tiles.net]
         interface = \"$_PRIMARY_INTERFACE\"
+        xdp_mode = \"drv\"
 [log]
     path = \"fddev_leader.log\"
     level_stderr = \"INFO\"
