@@ -1659,6 +1659,8 @@ fd_sbpf_program_load_test_run( FD_PARAM_UNUSED fd_exec_instr_test_runner_t * run
   return actual_end - (ulong) output_buf;
 }
 
+static fd_exec_test_instr_effects_t const * cpi_exec_effects = NULL;
+
 ulong
 fd_exec_vm_syscall_test_run( fd_exec_instr_test_runner_t * runner,
                              void const *                  input_,
@@ -1674,9 +1676,10 @@ fd_exec_vm_syscall_test_run( fd_exec_instr_test_runner_t * runner,
   const fd_exec_test_instr_context_t * input_instr_ctx = &input->instr_ctx;
   fd_exec_instr_ctx_t ctx[1];
   // Skip extra checks for non-CPI syscalls
-  bool skip_extra_checks = strncmp( (const char *)input->syscall_invocation.function_name.bytes, "sol_invoke_signed", 17 );
+  int skip_extra_checks = strncmp( (const char *)input->syscall_invocation.function_name.bytes, "sol_invoke_signed", 17 );
+  uint is_cpi = !skip_extra_checks;
 
-  if( !fd_exec_test_instr_context_create( runner, ctx, input_instr_ctx, alloc, skip_extra_checks ) )
+  if( !fd_exec_test_instr_context_create( runner, ctx, input_instr_ctx, alloc, !!skip_extra_checks ) )
     goto error;
   fd_valloc_t valloc = fd_scratch_virtual();
 
@@ -1702,6 +1705,9 @@ fd_exec_vm_syscall_test_run( fd_exec_instr_test_runner_t * runner,
   if( !input->has_vm_ctx ) {
     goto error;
   }
+  if( input->has_exec_effects ){
+    cpi_exec_effects = &input->exec_effects;
+  }
   uchar * rodata = input->vm_ctx.rodata ? input->vm_ctx.rodata->bytes : NULL;
   ulong rodata_sz = input->vm_ctx.rodata ? input->vm_ctx.rodata->size : 0UL;
 
@@ -1713,7 +1719,7 @@ fd_exec_vm_syscall_test_run( fd_exec_instr_test_runner_t * runner,
     input_regions_count = setup_vm_input_regions( input_regions, input->vm_ctx.input_data_regions, input->vm_ctx.input_data_regions_count );
   }
 
-  if (input->vm_ctx.heap_max > FD_VM_HEAP_DEFAULT) {
+  if (input->vm_ctx.heap_max > FD_VM_HEAP_MAX) {
     goto error;
   }
 
@@ -1792,7 +1798,14 @@ fd_exec_vm_syscall_test_run( fd_exec_instr_test_runner_t * runner,
   int syscall_err = syscall->func( vm, vm->reg[1], vm->reg[2], vm->reg[3], vm->reg[4], vm->reg[5], &vm->reg[0] );
 
   /* Capture the effects */
-  effects->error = -syscall_err;
+
+  /* Ignore Lamport mismatches since Agave performs this check outside of the CPI */
+  if( is_cpi && syscall_err == FD_VM_CPI_ERR_LAMPORTS_MISMATCH ) {
+    syscall_err = 0;
+  } else {
+    syscall_err = -syscall_err;
+  }
+
   effects->r0 = syscall_err ? 0 : vm->reg[0]; // Save only on success
   effects->cu_avail = (ulong)vm->cu;
 
@@ -1839,12 +1852,14 @@ fd_exec_vm_syscall_test_run( fd_exec_instr_test_runner_t * runner,
   /* Return the effects */
   ulong actual_end = tmp_end + input_regions_size;
   fd_exec_test_instr_context_destroy( runner, ctx, wksp, alloc );
+  cpi_exec_effects = NULL;
 
   *output = effects;
   return actual_end - (ulong)output_buf;
 
 error:
   fd_exec_test_instr_context_destroy( runner, ctx, wksp, alloc );
+  cpi_exec_effects = NULL;
   return 0;
 }
 
@@ -1854,8 +1869,50 @@ int
 __wrap_fd_execute_instr( fd_exec_txn_ctx_t * txn_ctx,
                          fd_instr_info_t *   instr_info )
 {
-    (void)(txn_ctx);
-    (void)(instr_info);
-    FD_LOG_WARNING(( "fd_execute_instr is disabled" ));
+    static const pb_byte_t zero_blk[32] = {0};
+
+    if( cpi_exec_effects == NULL ) {
+      FD_LOG_WARNING(( "fd_execute_instr is disabled" ));
+      return FD_EXECUTOR_INSTR_SUCCESS;
+    }
+
+    // Iterate through instruction accounts
+    for( ushort i = 0UL; i < instr_info->acct_cnt; ++i ) {
+      uchar idx_in_txn = instr_info->acct_txn_idxs[i];
+      fd_pubkey_t * acct_pubkey = &instr_info->acct_pubkeys[i];
+
+      fd_borrowed_account_t * acct = NULL;
+      /* Find (first) account in cpi_exec_effects->modified_accounts that matches pubkey*/
+      for( uint j = 0UL; j < cpi_exec_effects->modified_accounts_count; ++j ) {
+        fd_exec_test_acct_state_t * acct_state = &cpi_exec_effects->modified_accounts[j];
+        if( memcmp( acct_state->address, acct_pubkey, sizeof(fd_pubkey_t) ) != 0 ) continue;
+
+        /* Fetch borrowed account */
+        int err = fd_txn_borrowed_account_modify_idx( txn_ctx,
+                                                      idx_in_txn,
+                                                      /* Do not reallocate if data is not going to be modified */
+                                                      acct_state->data ? acct_state->data->size : 0UL,
+                                                      &acct );
+        if( err ) break;
+
+        /* Update account state */
+        acct->meta->info.lamports = acct_state->lamports;
+        acct->meta->info.executable = acct_state->executable;
+        acct->meta->info.rent_epoch = acct_state->rent_epoch;
+
+        /* TODO: use lower level API (i.e., fd_borrowed_account_resize) to avoid memcpy here */
+        if( acct_state->data ){
+          fd_memcpy( acct->data, acct_state->data->bytes, acct_state->data->size );
+          acct->meta->dlen = acct_state->data->size;
+        }
+
+        /* Follow solfuzz-agave, which skips if pubkey is malformed */
+        if( memcmp( acct_state->owner, zero_blk, sizeof(fd_pubkey_t) ) != 0 ) {
+          fd_memcpy( acct->meta->info.owner, acct_state->owner, sizeof(fd_pubkey_t) );
+        } 
+
+        break;
+      }
+    }
     return FD_EXECUTOR_INSTR_SUCCESS;
 }
