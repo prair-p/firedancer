@@ -310,7 +310,7 @@ fd_vm_syscall_sol_alloc_free( /**/            void *  _vm,
     return FD_VM_SUCCESS;
   }
 
-  ulong align = vm->check_align ? 8UL : 1UL;
+  ulong align = fd_vm_check_align_enabled( vm ) ? 8UL : 1UL;
 
   ulong heap_sz    = fd_ulong_align_up( vm->heap_sz, align                           );
   ulong heap_vaddr = fd_ulong_sat_add ( heap_sz,     FD_VM_MEM_MAP_HEAP_REGION_START );

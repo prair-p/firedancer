@@ -478,7 +478,7 @@ static inline void fd_vm_mem_st_8( fd_vm_t const * vm,
     fd_vm_t const * _vm       = (vm);                                                                       \
     uchar           _is_multi = 0;                                                                          \
     ulong           _vaddr    = (vaddr);                                                                    \
-    int             _sigbus   = _vm->check_align & (!fd_ulong_is_aligned( _vaddr, (align) ));               \
+    int             _sigbus   = fd_vm_check_align_enabled( vm ) & (!fd_ulong_is_aligned( _vaddr, (align) )); \
     ulong           _haddr    = fd_vm_mem_haddr( vm, _vaddr, (sz), _vm->region_haddr, _vm->region_ld_sz, 0, 0UL, &_is_multi ); \
     if( FD_UNLIKELY( (!_haddr) | _sigbus | _is_multi ) ) return FD_VM_ERR_SIGSEGV;                          \
     (void const *)_haddr;                                                                                   \
@@ -496,7 +496,7 @@ static inline void fd_vm_mem_st_8( fd_vm_t const * vm,
     fd_vm_t const * _vm       = (vm);                                                                       \
     uchar           _is_multi = 0;                                                                          \
     ulong           _vaddr    = (vaddr);                                                                    \
-    int             _sigbus   = _vm->check_align & (!fd_ulong_is_aligned( _vaddr, (align) ));               \
+    int             _sigbus   = fd_vm_check_align_enabled( vm ) & (!fd_ulong_is_aligned( _vaddr, (align) )); \
     ulong           _haddr    = fd_vm_mem_haddr( vm, _vaddr, (sz), _vm->region_haddr, _vm->region_st_sz, 1, 0UL, &_is_multi ); \
     if( FD_UNLIKELY( (!_haddr) | _sigbus | _is_multi) ) { return FD_VM_ERR_SIGSEGV; }                       \
     (void *)_haddr;                                                                                         \
@@ -506,7 +506,7 @@ static inline void fd_vm_mem_st_8( fd_vm_t const * vm,
     fd_vm_t const * _vm       = (vm);                                                                       \
     uchar           _is_multi = 0;                                                                          \
     ulong           _vaddr    = (vaddr);                                                                    \
-    int             _sigbus   = _vm->check_align & (!fd_ulong_is_aligned( _vaddr, (align) ));               \
+    int             _sigbus   = fd_vm_check_align_enabled( vm ) & (!fd_ulong_is_aligned( _vaddr, (align) )); \
     ulong           _haddr    = fd_vm_mem_haddr( vm, _vaddr, (sz), _vm->region_haddr, _vm->region_ld_sz, 0, 0UL, &_is_multi ); \
     if( FD_UNLIKELY( (!_haddr) | _sigbus | _is_multi ) ) return FD_VM_ERR_SIGSEGV;                          \
     (void *)_haddr;                                                                                         \
