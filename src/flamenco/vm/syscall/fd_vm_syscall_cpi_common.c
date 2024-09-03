@@ -39,14 +39,23 @@ VM_SYSCALL_CPI_INSTRUCTION_TO_INSTR_FUNC( fd_vm_t * vm,
                             fd_instr_info_t * out_instr ) {
 
   /* Find the index of the CPI instruction's program account in the transaction */
-  /* TODO: what if this is not present? */
   fd_pubkey_t * txn_accs = vm->instr_ctx->txn_ctx->accounts;
+  uint program_found = 0;
   for( ulong i=0UL; i < vm->instr_ctx->txn_ctx->accounts_cnt; i++ ) {
     if( !memcmp( program_id, &txn_accs[i], sizeof( fd_pubkey_t ) ) ) {
       out_instr->program_id = (uchar)i;
       out_instr->program_id_pubkey = txn_accs[i];
+      program_found = 1;
       break;
     }
+  }
+  
+  /* https://github.com/anza-xyz/agave/blob/a9ac3f55fcb2bc735db0d251eda89897a5dbaaaa/program-runtime/src/invoke_context.rs#L434 */
+  if( FD_UNLIKELY( !program_found ) ) {
+    char id_b58[45];
+    fd_base58_encode_32( program_id->uc, NULL, id_b58 );
+    fd_log_collector_printf_dangerous_max_127( vm->instr_ctx, "Unknown program %s", id_b58 );
+    return FD_EXECUTOR_INSTR_ERR_MISSING_ACC;
   }
 
   /* Calculate summary information for the account list */
