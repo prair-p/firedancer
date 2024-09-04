@@ -229,7 +229,7 @@ fd_store_shred_insert( fd_store_t * store,
     fd_blockstore_end_write( blockstore );
     return FD_BLOCKSTORE_OK;
   }
-  int rc = fd_buf_shred_insert( blockstore, shred );
+  int rc = fd_blockstore_shred_insert( blockstore, shred );
   fd_blockstore_end_write( blockstore );
 
   /* FIXME */
@@ -401,7 +401,7 @@ fd_store_slot_repair( fd_store_t * store,
 
     /* Fill in what's missing */
     for( uint i = block_map_entry->consumed_idx + 1; i <= complete_idx; i++ ) {
-      if( fd_buf_shred_query( store->blockstore, slot, i ) != NULL ) continue;
+      if( fd_blockstore_shred_query( store->blockstore, slot, i ) != NULL ) continue;
 
       fd_repair_request_t * repair_req = &out_repair_reqs[repair_req_cnt++];
       repair_req->shred_index = i;
