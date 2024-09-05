@@ -1301,7 +1301,7 @@ fd_runtime_finalize_txn( fd_exec_slot_ctx_t *         slot_ctx,
 
     fd_acc_mgr_view( txn_ctx->acc_mgr, txn_ctx->funk_txn, &txn_ctx->accounts[0], borrowed_account );
     memcpy( borrowed_account->pubkey->key, &txn_ctx->accounts[0], sizeof(fd_pubkey_t) );
-    
+
     void * borrowed_account_data = fd_valloc_malloc( txn_ctx->valloc, 8UL, fd_borrowed_account_raw_size( borrowed_account ) );
     fd_borrowed_account_make_modifiable( borrowed_account, borrowed_account_data );
     borrowed_account->meta->info.lamports = post_fee_balance;
@@ -1389,6 +1389,15 @@ fd_runtime_finalize_txn( fd_exec_slot_ctx_t *         slot_ctx,
   return 0;
 }
 
+static ulong
+fd_txn_copy_meta( fd_exec_txn_ctx_t * txn_ctx, uchar * dest ) {
+  ulong sz = txn_ctx->log_collector.buf_sz;
+  if( sz && dest != NULL ) {
+    fd_memcpy( dest, txn_ctx->log_collector.buf, sz );
+  }
+  return sz;
+}
+
 /* fd_runtime_finalize_txns_update_blockstore_meta() updates transaction metadata
    after execution.
 
@@ -1417,11 +1426,8 @@ fd_runtime_finalize_txns_update_blockstore_meta( fd_exec_slot_ctx_t *         sl
   /* Get the total size of all logs */
   ulong tot_meta_sz = 2*sizeof(ulong);
   for( ulong txn_idx = 0; txn_idx < txn_cnt; txn_idx++ ) {
-    fd_exec_txn_ctx_t * txn_ctx = task_info[txn_idx].txn_ctx;
-    if( txn_ctx->log_collector.buf_sz ) {
-      ulong meta_sz = txn_ctx->log_collector.buf_sz;
-      tot_meta_sz += meta_sz;
-    }
+    /* Get the size without the copy */
+    tot_meta_sz += fd_txn_copy_meta( task_info[txn_idx].txn_ctx, NULL );
   }
   uchar * cur_laddr = fd_alloc_malloc( blockstore_alloc, 1, tot_meta_sz );
   if( cur_laddr == NULL ) {
@@ -1439,13 +1445,9 @@ fd_runtime_finalize_txns_update_blockstore_meta( fd_exec_slot_ctx_t *         sl
 
   for( ulong txn_idx = 0; txn_idx < txn_cnt; txn_idx++ ) {
     fd_exec_txn_ctx_t * txn_ctx = task_info[txn_idx].txn_ctx;
-    if( txn_ctx->log_collector.buf_sz ) {
-      /* Prepare metadata.
-         Note: currently we only include logs, that are already serialized in protobuf. */
-      ulong  meta_sz = txn_ctx->log_collector.buf_sz;
-      void * meta_laddr = cur_laddr;
-      ulong  meta_gaddr = fd_wksp_gaddr_fast( blockstore_wksp, meta_laddr );
-      fd_memcpy( meta_laddr, txn_ctx->log_collector.buf, meta_sz );
+    ulong meta_sz = fd_txn_copy_meta( txn_ctx, cur_laddr );
+    if( meta_sz ) {
+      ulong  meta_gaddr = fd_wksp_gaddr_fast( blockstore_wksp, cur_laddr );
 
       /* Update all the signatures */
       char const * sig_p = (char const *)txn_ctx->_txn_raw->raw + txn_ctx->txn_descriptor->signature_off;
