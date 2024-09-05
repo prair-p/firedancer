@@ -1390,9 +1390,25 @@ fd_runtime_finalize_txn( fd_exec_slot_ctx_t *         slot_ctx,
   return 0;
 }
 
+static bool
+encode_return_data( pb_ostream_t *stream, const pb_field_t *field, void * const *arg ) {
+  (void)field;
+  fd_exec_txn_ctx_t * txn_ctx = (fd_exec_txn_ctx_t *)arg;
+  pb_write( stream, txn_ctx->return_data.data, txn_ctx->return_data.len );
+  return 1;
+}
+
 static ulong
 fd_txn_copy_meta( fd_exec_txn_ctx_t * txn_ctx, uchar * dest, ulong dest_sz ) {
   fd_solblock_TransactionStatusMeta txn_status = {0};
+
+  if( txn_ctx->return_data.len ) {
+    txn_status.has_return_data = 1;
+    txn_status.return_data.has_program_id = 1;
+    fd_memcpy( txn_status.return_data.program_id, txn_ctx->return_data.program_id.uc, 32U );
+    pb_callback_t data = { .funcs.encode = encode_return_data, .arg = txn_ctx };
+    txn_status.return_data.data = data;
+  }
 
   if( dest == NULL ) {
     size_t sz = 0;
