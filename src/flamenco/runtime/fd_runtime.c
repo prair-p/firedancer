@@ -40,6 +40,7 @@
 #include "sysvar/fd_sysvar_slot_history.h"
 
 #include "../nanopb/pb_decode.h"
+#include "../nanopb/pb_encode.h"
 #include "../types/fd_solana_block.pb.h"
 
 #include "fd_system_ids.h"
@@ -1390,12 +1391,27 @@ fd_runtime_finalize_txn( fd_exec_slot_ctx_t *         slot_ctx,
 }
 
 static ulong
-fd_txn_copy_meta( fd_exec_txn_ctx_t * txn_ctx, uchar * dest ) {
-  ulong sz = txn_ctx->log_collector.buf_sz;
-  if( sz && dest != NULL ) {
-    fd_memcpy( dest, txn_ctx->log_collector.buf, sz );
+fd_txn_copy_meta( fd_exec_txn_ctx_t * txn_ctx, uchar * dest, ulong dest_sz ) {
+  fd_solblock_TransactionStatusMeta txn_status = {0};
+
+  if( dest == NULL ) {
+    size_t sz = 0;
+    bool r = pb_get_encoded_size( &sz, fd_solblock_TransactionStatusMeta_fields, &txn_status );
+    if( !r ) {
+      FD_LOG_WARNING(( "pb_get_encoded_size failed" ));
+      return 0;
+    }
+    return sz + txn_ctx->log_collector.buf_sz;
   }
-  return sz;
+
+  pb_ostream_t stream = pb_ostream_from_buffer( dest, dest_sz );
+  bool r = pb_encode( &stream, fd_solblock_TransactionStatusMeta_fields, &txn_status );
+  if( !r ) {
+    FD_LOG_WARNING(( "pb_encode failed" ));
+    return 0;
+  }
+  pb_write( &stream, txn_ctx->log_collector.buf, txn_ctx->log_collector.buf_sz );
+  return stream.bytes_written;
 }
 
 /* fd_runtime_finalize_txns_update_blockstore_meta() updates transaction metadata
@@ -1427,12 +1443,13 @@ fd_runtime_finalize_txns_update_blockstore_meta( fd_exec_slot_ctx_t *         sl
   ulong tot_meta_sz = 2*sizeof(ulong);
   for( ulong txn_idx = 0; txn_idx < txn_cnt; txn_idx++ ) {
     /* Get the size without the copy */
-    tot_meta_sz += fd_txn_copy_meta( task_info[txn_idx].txn_ctx, NULL );
+    tot_meta_sz += fd_txn_copy_meta( task_info[txn_idx].txn_ctx, NULL, 0 );
   }
   uchar * cur_laddr = fd_alloc_malloc( blockstore_alloc, 1, tot_meta_sz );
   if( cur_laddr == NULL ) {
     return;
   }
+  uchar * const end_laddr = cur_laddr + tot_meta_sz;
 
   fd_blockstore_start_write( blockstore );
   fd_block_t * blk = fd_blockstore_block_query( blockstore, slot_ctx->slot_bank.slot );
@@ -1445,7 +1462,7 @@ fd_runtime_finalize_txns_update_blockstore_meta( fd_exec_slot_ctx_t *         sl
 
   for( ulong txn_idx = 0; txn_idx < txn_cnt; txn_idx++ ) {
     fd_exec_txn_ctx_t * txn_ctx = task_info[txn_idx].txn_ctx;
-    ulong meta_sz = fd_txn_copy_meta( txn_ctx, cur_laddr );
+    ulong meta_sz = fd_txn_copy_meta( txn_ctx, cur_laddr, (size_t)(end_laddr - cur_laddr) );
     if( meta_sz ) {
       ulong  meta_gaddr = fd_wksp_gaddr_fast( blockstore_wksp, cur_laddr );
 
@@ -1467,7 +1484,7 @@ fd_runtime_finalize_txns_update_blockstore_meta( fd_exec_slot_ctx_t *         sl
     fd_log_collector_delete( &txn_ctx->log_collector );
   }
 
-  FD_TEST( blk->txns_meta_gaddr + blk->txns_meta_sz == fd_wksp_gaddr_fast( blockstore_wksp, cur_laddr ) );
+  FD_TEST( cur_laddr == end_laddr );
 
   fd_blockstore_end_write( blockstore );
 }
